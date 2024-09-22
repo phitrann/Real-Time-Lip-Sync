@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rtlipsync"
+version = "0.0.1"
+description = ""
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+]
+dependencies = [
+    "torch==2.0.1", "torchvision==0.15.2 ", "torchaudio==2.0.2",
+    "diffusers==0.27.2", "accelerate==0.28.0",
+    "tensorflow==2.12.0", "tensorboard==2.12.0", "opencv-python==4.9.0.80",
+    "soundfile==0.12.1", "transformers==4.39.2",
+    "gdown", "requests", "imageio[ffmpeg]",
+    "omegaconf", "ffmpeg-python", "gradio", "spaces", "moviepy",
+    "fastapi", "uvicorn"
+]
+
+[project.optional-dependencies]
+all = [
+    "rtlipsync[dev]",
+    "rtlipsync[test]",
+]
+dev = [
+    "ruff>=0.2.1",
+    "pre-commit>=3.6.0",
+]
+test = [
+    "pytest>=8.0.0",
+    "coverage>=7.4.1",
+]
+
+[project.urls]
+"Bug Tracker" = "https://github.com/phitrann/rtlipsync/issues"
+
+[tool.setuptools.packages.find]
+exclude = ["assets*", "benchmark*", "docs", "dist*", "playground*", "scripts*", "tests*"]
+
+[tool.wheel]
+exclude = ["assets*", "benchmark*", "docs", "dist*", "playground*", "scripts*", "tests*"]

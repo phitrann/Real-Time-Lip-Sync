@@ -6,6 +6,15 @@ __pycache__/
 # C extensions
 *.so
 
+# Checkpoints
+models/
+
+# FFMPEG
+ffmpeg-git-20240629-amd64-static/
+
+# Results
+results/
+
 # Distribution / packaging
 .Python
 build/
