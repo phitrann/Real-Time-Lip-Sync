@@ -21,6 +21,5 @@ fastapi
 uvicorn
 
 aiortc
-pyaudio
 pydub
 sounddevice

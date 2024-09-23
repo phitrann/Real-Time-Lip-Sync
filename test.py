@@ -176,27 +176,30 @@ os.environ["no_proxy"] = "localhost,172.16.87.75,127.0.0.1"
 # if __name__ == "__main__":
 #     asyncio.run(main())
 
+#########################################################
 
-import aiohttp
+# import aiohttp
 
-async def upload_audio_file(session_id, file_path):
-    async with aiohttp.ClientSession() as session:
-        with open(file_path, 'rb') as file:
-            audio_data = {'file': file}
-            payload = {'sessionid': str(session_id)}
-            form = aiohttp.FormData()
-            form.add_field('sessionid', str(session_id))
-            form.add_field('file', open(file_path, 'rb'), filename=file_path)
+# async def upload_audio_file(session_id, file_path):
+#     async with aiohttp.ClientSession() as session:
+#         with open(file_path, 'rb') as file:
+#             audio_data = {'file': file}
+#             payload = {'sessionid': str(session_id)}
+#             form = aiohttp.FormData()
+#             form.add_field('sessionid', str(session_id))
+#             form.add_field('file', open(file_path, 'rb'), filename=file_path)
             
-            async with session.post('http://localhost:8010/humanaudio', data=form) as response:
-                response_json = await response.json()
-                print(f"Response: {response_json}")
+#             async with session.post('http://localhost:8010/humanaudio', data=form) as response:
+#                 response_json = await response.json()
+#                 print(f"Response: {response_json}")
 
-# Example usage
-session_id = 0
-file_path = 'data/audio/elon.wav'
-asyncio.run(upload_audio_file(session_id, file_path))
-
+# # Example usage
+# session_id = 0
+# file_path = 'data/audio/elon.wav'
+# asyncio.run(upload_audio_file(session_id, file_path))
+ 
+ #############################################################
+ 
 # import asyncio
 # import wave
 # from aiortc import RTCPeerConnection, RTCSessionDescription, MediaStreamTrack
@@ -257,3 +260,106 @@ asyncio.run(upload_audio_file(session_id, file_path))
 # # Run the WebRTC client and send audio
 # audio_file_path = "data/audio/elon.wav"
 # asyncio.run(create_webrtc_offer(audio_file_path))
+
+########################################################
+# import asyncio
+# import websockets
+# import json
+
+# async def websocket_client(message: str, server_url: str):
+#     """
+#     WebSocket client to send a message and receive responses from the server.
+
+#     Args:
+#         message (str): The message to send to the server.
+#         server_url (str): WebSocket server URL (e.g., ws://localhost:8000/humanecho).
+#     """
+#     try:
+#         async with websockets.connect(server_url) as websocket:
+#             # Send the message to the WebSocket server
+#             print(f"Sending: {message}")
+#             await websocket.send(message)
+            
+#             # Wait for the server's response
+#             response = await websocket.recv()
+#             print(f"Received: {response}")
+            
+#             # Optionally parse the response as JSON if needed
+#             try:
+#                 video_data = json.loads(response)
+#                 print("Parsed video data:", video_data)
+#             except json.JSONDecodeError:
+#                 print("Response is not valid JSON:", response)
+
+#     except websockets.exceptions.ConnectionClosed as e:
+#         print(f"Connection closed: {e}")
+#     except Exception as e:
+#         print(f"Error: {e}")
+
+# # Function to start the WebSocket client
+# def start_websocket_client():
+#     message = "test"  # You can replace this with dynamic input if needed
+#     server_url = "ws://localhost:8010/humanecho"  # Replace with your WebSocket server URL
+#     asyncio.run(websocket_client(message, server_url))
+
+# start_websocket_client()
+
+########################################################
+
+import asyncio
+import json
+import aiohttp
+from aiortc import RTCPeerConnection, RTCSessionDescription
+
+async def negotiate(pc, url):
+    await pc.setLocalDescription(await pc.createOffer())
+    
+    # Wait for ICE gathering to complete
+    while pc.iceGatheringState != "complete":
+        await asyncio.sleep(0.1)
+    
+    offer = pc.localDescription
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, 
+                                json={"sdp": offer.sdp, "type": offer.type},
+                                headers={"Content-Type": "application/json"}) as response:
+            answer = await response.json()
+            
+            await pc.setRemoteDescription(RTCSessionDescription(sdp=answer["sdp"], type=answer["type"]))
+            
+            return answer["sessionid"]
+
+async def start_webrtc():
+    config = {"sdpSemantics": "unified-plan"}
+    # Uncomment the following line if you want to use STUN servers
+    # config["iceServers"] = [{"urls": ["stun:stun.l.google.com:19302"]}]
+    
+    pc = RTCPeerConnection(config)
+    
+    # Add transceivers (equivalent to addTrack in the JS version)
+    pc.addTransceiver("video", {"direction": "recvonly"})
+    pc.addTransceiver("audio", {"direction": "recvonly"})
+    
+    # You would typically set up event listeners here for incoming tracks
+    # For example:
+    # @pc.on("track")
+    # def on_track(track):
+    #     if track.kind == "video":
+    #         # Handle video track
+    #     elif track.kind == "audio":
+    #         # Handle audio track
+    
+    url = "http://localhost:8010/offer"  # Adjust this URL as needed
+    session_id = await negotiate(pc, url)
+    print(f"Session ID: {session_id}")
+    
+    # Keep the connection alive
+    try:
+        while True:
+            await asyncio.sleep(1)
+    finally:
+        await pc.close()
+
+if __name__ == "__main__":
+    asyncio.run(start_webrtc())

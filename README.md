@@ -2,6 +2,60 @@
 
 This project makes use of the MuseTalk model to perform real-time lip-syncing on a video and provides an API for generating digital human videos.
 
+## Project Structure
+Below is a detailed explanation of the project structure:
+```bash
+├── app
+│   ├── __pycache__              # Python cache files
+│   ├── config.py                # Configuration file for the project
+│   ├── museasr.py               # Audio processing module for ASR functionality
+│   ├── musereal.py              # Main class handling real-time lip-sync inference using MuseTalk model
+│   ├── realtime_inference.py    # Script to run inference in real-time
+│   ├── webrtc.py                # WebRTC module to handle real-time video and audio streaming
+│   └── worker.py                # Worker thread for handling background processes
+├── assets
+│   └── musetalk_arc.jpg         # Architecture diagram for MuseTalk (Optional)
+├── configs
+│   └── inference                # Configuration files for inference settings
+├── data
+│   ├── audio                    # Folder to store input audio files
+│   └── video                    # Folder to store input video files
+├── models
+│   ├── drivers                  # Pre-trained models and drivers for the inference process
+│   ├── dwpose                   # Pose estimation models for aligning facial landmarks
+│   ├── face-parse-bisent        # Face parsing models for detecting regions of the face
+│   ├── musetalk                 # MuseTalk model files for lip-sync functionality
+│   ├── sd-vae-ft-mse            # Variational autoencoder models for fine-tuning
+│   ├── whisper                  # Whisper ASR model used for speech recognition
+│   └── README.md                # Readme file for models directory
+├── results
+│   ├── avatars                  # Generated avatars after running the inference
+│   ├── sun                      # Processed results for the "sun" video
+│   ├── yongen                   # Processed results for the "yongen" video
+│   ├── sun_sun.mp4              # Final output video for "sun"
+│   └── yongen_yongen.mp4        # Final output video for "yongen"
+├── rtlipsync
+│   ├── inference                # Inference-related scripts and modules for real-time lip-sync
+│   ├── models                   # Additional models used for lip-sync
+│   ├── utils                    # Utility functions for the project
+│   └── whisper                  # Whisper model integration for ASR task
+├── scripts
+│   ├── download_models.py       # Script to download necessary pre-trained models
+│   └── __init__.py              # Init file for the `scripts` module
+├── web
+│   ├── client.js                # JavaScript client for WebRTC integration
+│   ├── webrtcapi.html           # HTML interface for interacting with the WebRTC API
+│   └── webrtc.html              # HTML interface for WebRTC video streaming
+├── cookbook.ipynb               # Jupyter notebook with experimental code snippets
+├── deploy.sh                    # Shell script for deployment setup
+├── Dockerfile                   # Dockerfile to containerize the project
+├── main.py                      # Main entry point of the application
+├── output_video.mp4             # Output video generated after running the model
+├── pyproject.toml               # Project configuration file for Python dependencies
+├── README.md                    # Detailed README with setup instructions and project explanation
+└──  requirements.txt             # List of Python dependencies
+```
+
 ## MuseTalk: Real-Time Lip Sync with High-Quality Talking Avatars
 
 MuseTalk is an open-source project that provides a real-time lip-sync solution with high-quality talking avatars. It was developed by the [Tencent Music Entertainment Lyra Lab](https://huggingface.co/TMElyralab) in April 2024. As of late 2024, it's considered state-of-the-art in terms of openly available zero-shot lipsyncing models. It's also available under the MIT License, which makes it usable both academically and commercially. 
@@ -21,6 +75,11 @@ It uses Whisper-tiny's audio features to perform the facial modifications. The a
 To prepare the Python environment and install additional packages such as opencv, diffusers, mmcv, etc., please follow the steps below:
 
 #### Build the environment
+Conda is recommended for creating the environment. You can create a new environment using the following command:
+```bash
+conda create -n rtlipsync python=3.10
+conda activate rtlipsync
+```
 
 ```bash
 pip install -r requirements.txt
@@ -466,7 +525,13 @@ For real-time interaction via WebSocket:
 
 - You can open a WebSocket connection to `ws://localhost:8010/humanecho` and stream live text or audio.
   
-### Conclusion
+<!-- ### Conclusion
 
-This API provides a flexible way to interact with an avatar that can mimic the voice/audio you provide. You can either use pre-recorded audio files or stream real-time voice input. The WebRTC setup allows you to stream video and audio, making it suitable for real-time video conferencing applications.
+This API provides a flexible way to interact with an avatar that can mimic the voice/audio you provide. You can either use pre-recorded audio files or stream real-time voice input. The WebRTC setup allows you to stream video and audio, making it suitable for real-time video conferencing applications. -->
+
+### References
+1. MuseTalk: Real-Time Lip Sync with High-Quality Talking Avatars. [GitHub](https://github.com/TMElyralab/MuseTalk)
+2. HeyGen: https://docs.heygen.com/docs/quick-start
+3. metahuman-stream: Real time interactive streaming digital human. [GitHub](https://github.com/lipku/metahuman-stream)
+4. Streamer-Sales: 销冠 —— 卖货主播大模型. [GitHub](https://github.com/PeterH0323/Streamer-Sales)
 

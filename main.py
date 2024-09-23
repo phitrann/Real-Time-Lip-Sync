@@ -97,6 +97,7 @@ import aiohttp
 
 from app.webrtc import HumanPlayer
 from app.musereal import MuseReal
+from app.worker import gen_digital_human_video_app, preprocess_digital_human_app
 
 from contextlib import asynccontextmanager
 # Ensure that the start method is set before any multiprocessing code
@@ -199,6 +200,26 @@ class DigitalHumanPreprocessItem(BaseModel):
     streamer_id: str  # Digital human ID
     video_path: str  # Digital human video path
 
+@app.post("/digital_human/gen")
+async def get_digital_human(dg_item: DigitalHumanItem):
+    """Generate digital human video"""
+    save_tag = (
+        dg_item.request_id + ".mp4" if dg_item.chunk_id == 0 else dg_item.request_id + f"-{str(dg_item.chunk_id).zfill(8)}.mp4"
+    )
+    mp4_path = await gen_digital_human_video_app(dg_item.streamer_id, dg_item.tts_path, save_tag)
+    logger.info(f"digital human mp4 path = {mp4_path}")
+    return {"user_id": dg_item.user_id, "request_id": dg_item.request_id, "digital_human_mp4_path": mp4_path}
+
+
+@app.post("/digital_human/preprocess")
+async def preprocess_digital_human(preprocess_item: DigitalHumanPreprocessItem):
+    """Digital human video preprocessing for adding new digital humans"""
+
+    _ = await preprocess_digital_human_app(str(preprocess_item.streamer_id), preprocess_item.video_path)
+
+    logger.info(f"digital human process for {preprocess_item.streamer_id} done")
+    return {"user_id": preprocess_item.user_id, "request_id": preprocess_item.request_id}
+
 
 @app.websocket("/humanecho")
 async def echo_socket(websocket: WebSocket):
@@ -243,18 +264,96 @@ class RelayTrack(MediaStreamTrack):
         frame = await self.track.recv()
         return self.relay.relay(frame)
 
+# @app.post("/offer")
+# async def offer(params: OfferModel):
+#     global nerfreals, statreals
+
+#     offer = RTCSessionDescription(sdp=params.sdp, type=params.type)
+
+#     sessionid = len(nerfreals)
+#     for index, value in enumerate(statreals):
+#         if value == 0:
+#             sessionid = index
+#             break
+#     if sessionid >= len(nerfreals):
+#         print(statreals, nerfreals)
+#         print('Reached max session limit')
+#         return JSONResponse(content={"error": "Max sessions reached"}, status_code=400)
+#     statreals[sessionid] = 1
+
+#     pc = RTCPeerConnection()
+#     pcs.add(pc)
+
+#     # Log offer SDP for debugging
+#     print(f"Received Offer SDP:\n{offer.sdp}")
+
+#     @pc.on("connectionstatechange")
+#     async def on_connectionstatechange():
+#         print(f"Connection state is {pc.connectionState}")
+#         if pc.connectionState in ["failed", "closed"]:
+#             await pc.close()
+#             pcs.pop(str(sessionid), None)
+#             statreals[sessionid] = 0
+
+#     # Add handlers for incoming media (audio and video)
+#     @pc.on("track")
+#     def on_track(track):
+#         if track.kind == "audio":
+#             print("Received audio track")
+#             @track.on("ended")
+#             async def on_ended():
+#                 print("Audio track ended")
+#         elif track.kind == "video":
+#             print("Received video track")
+#             pc.addTrack(RelayTrack(track))  # Ensure proper relaying of track
+
+#     # Create a video stream from MuseReal and add video transceiver
+#     player = HumanPlayer(nerfreals[sessionid])
+
+#     # Explicitly add transceivers
+#     audio_transceiver = pc.addTransceiver("audio", direction="sendrecv")
+#     video_transceiver = pc.addTransceiver("video", direction="sendrecv")
+    
+#     # Add the video track to the video transceiver
+#     video_transceiver.sender.replaceTrack(player.video)
+
+#     # Ensure all transceivers have correct directions
+#     for transceiver in pc.getTransceivers():
+#         print(f"Transceiver {transceiver.kind} direction: {transceiver.direction}")
+#         transceiver.direction = "sendrecv"  # Explicitly set the direction to "sendrecv"
+
+#     # Set the remote description with the offer from the client
+#     await pc.setRemoteDescription(offer)
+
+#     # Create an answer and set it as the local description
+#     answer = await pc.createAnswer()
+#     await pc.setLocalDescription(answer)
+
+#     # Log answer SDP for debugging
+#     print(f"Generated Answer SDP:\n{pc.localDescription.sdp}")
+
+#     return JSONResponse(content={
+#         "sdp": pc.localDescription.sdp,
+#         "type": pc.localDescription.type,
+#         "sessionid": sessionid
+#     })
+
 @app.post("/offer")
-async def offer(params: OfferModel):
-    offer = RTCSessionDescription(sdp=params.sdp, type=params.type)
+async def offer(request: Request):
+    global nerfreals, statreals, pcs
+    
+    params = await request.json()
+    offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
 
     sessionid = len(nerfreals)
     for index, value in enumerate(statreals):
         if value == 0:
             sessionid = index
             break
+
     if sessionid >= len(nerfreals):
-        print('Reached max session limit')
-        return JSONResponse(content={"error": "Max sessions reached"}, status_code=400)
+        return JSONResponse(status_code=400, content={"message": "Max sessions reached"})
+    
     statreals[sessionid] = 1
 
     pc = RTCPeerConnection()
@@ -265,76 +364,23 @@ async def offer(params: OfferModel):
         print(f"Connection state is {pc.connectionState}")
         if pc.connectionState in ["failed", "closed"]:
             await pc.close()
-            pcs.pop(str(sessionid), None)
+            pcs.discard(pc)
             statreals[sessionid] = 0
 
-    # Add handlers for incoming media (audio)
-    @pc.on("track")
-    def on_track(track):
-        if track.kind == "audio":
-            print("Received audio track")
-            @track.on("ended")
-            async def on_ended():
-                print("Audio track ended")
-        elif track.kind == "video":
-            print("Received video track")
-            pc.addTrack(RelayTrack(track))
-
-   # Create a video stream from MuseReal
     player = HumanPlayer(nerfreals[sessionid])
-    pc.addTrack(player.video)
+    audio_sender = pc.addTrack(player.audio)
+    video_sender = pc.addTrack(player.video)
+
+    capabilities = RTCRtpSender.getCapabilities("video")
+    preferences = list(filter(lambda x: x.name in ["H264", "VP8", "rtx"], capabilities.codecs))
+    transceiver = pc.getTransceivers()[1]
+    transceiver.setCodecPreferences(preferences)
 
     await pc.setRemoteDescription(offer)
     answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
 
-    return JSONResponse(content={
-        "sdp": pc.localDescription.sdp,
-        "type": pc.localDescription.type,
-        "sessionid": sessionid
-    })
-
-# @app.post("/offer")
-# async def offer(request: Request):
-#     params = await request.json()
-#     offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
-
-#     sessionid = len(nerfreals)
-#     for index, value in enumerate(statreals):
-#         if value == 0:
-#             sessionid = index
-#             break
-
-#     if sessionid >= len(nerfreals):
-#         return JSONResponse(status_code=400, content={"message": "Max sessions reached"})
-    
-#     statreals[sessionid] = 1
-
-#     pc = RTCPeerConnection()
-#     pcs.add(pc)
-
-#     @pc.on("connectionstatechange")
-#     async def on_connectionstatechange():
-#         print(f"Connection state is {pc.connectionState}")
-#         if pc.connectionState in ["failed", "closed"]:
-#             await pc.close()
-#             pcs.discard(pc)
-#             statreals[sessionid] = 0
-
-#     player = HumanPlayer(nerfreals[sessionid])
-#     audio_sender = pc.addTrack(player.audio)
-#     video_sender = pc.addTrack(player.video)
-
-#     capabilities = RTCRtpSender.getCapabilities("video")
-#     preferences = list(filter(lambda x: x.name in ["H264", "VP8", "rtx"], capabilities.codecs))
-#     transceiver = pc.getTransceivers()[1]
-#     transceiver.setCodecPreferences(preferences)
-
-#     await pc.setRemoteDescription(offer)
-#     answer = await pc.createAnswer()
-#     await pc.setLocalDescription(answer)
-
-#     return JSONResponse(content={"sdp": pc.localDescription.sdp, "type": pc.localDescription.type, "sessionid": sessionid})
+    return JSONResponse(content={"sdp": pc.localDescription.sdp, "type": pc.localDescription.type, "sessionid": sessionid})
 
 
 @app.post("/humanaudio")

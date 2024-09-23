@@ -333,9 +333,9 @@ class MuseReal(BaseReal):
         
         self.process.start()
         
-        # Register signal handlers to clean up on reload or termination
-        signal.signal(signal.SIGINT, self.cleanup_signal_handler)
-        signal.signal(signal.SIGTERM, self.cleanup_signal_handler)
+        # # Register signal handlers to clean up on reload or termination
+        # signal.signal(signal.SIGINT, self.cleanup_signal_handler)
+        # signal.signal(signal.SIGTERM, self.cleanup_signal_handler)
         
     def stop_inference(self):
         """Stop the inference process and clean up resources."""
