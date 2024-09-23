@@ -3,9 +3,11 @@
 This project makes use of the MuseTalk model to perform real-time lip-syncing on a video and provides an API for generating digital human videos.
 
 ## MuseTalk: Real-Time Lip Sync with High-Quality Talking Avatars
-MuseTalk is a open-source project that provides a real-time lip-sync solution with high-quality talking avatars. It was developed by the [Tencent Music Entertainment Lyra Lab](https://huggingface.co/TMElyralab) in April 2024. As of late 2024, it’s considered state-of-the-art in terms of openly available zero-shot lipsyncing models. It’s also available under the MIT License, which makes it usable both academically and commercially. 
+
+MuseTalk is an open-source project that provides a real-time lip-sync solution with high-quality talking avatars. It was developed by the [Tencent Music Entertainment Lyra Lab](https://huggingface.co/TMElyralab) in April 2024. As of late 2024, it's considered state-of-the-art in terms of openly available zero-shot lipsyncing models. It's also available under the MIT License, which makes it usable both academically and commercially. 
 
 ### How does it work?
+
 The technical report of MuseTalk is not yet available. However, I have a shallow understanding of how it works. MuseTalk is able to modify an unseen face according to a provided audio with a face region of 256 x 256. 
 
 It uses Whisper-tiny's audio features to perform the facial modifications. The architecture of the generation network is borrowed from the UNet of __stable-diffusion-v1-4__ where audio embeddings were fused with the image embeddings using cross-attention.
@@ -13,17 +15,21 @@ It uses Whisper-tiny's audio features to perform the facial modifications. The a
 ![](assets/musetalk_arc.jpg)
 
 ## Getting Started
+
 ### Installation
+
 To prepare the Python environment and install additional packages such as opencv, diffusers, mmcv, etc., please follow the steps below:
 
-
 #### Build the environment
+
 ```bash
 pip install -r requirements.txt
 pip install -e . 
+conda install pyaudio
 ```
 
 #### mmlab packages
+
 ```bash
 pip install --no-cache-dir -U openmim 
 mim install mmengine 
@@ -33,9 +39,10 @@ mim install "mmpose>=1.1.0"
 ```
 
 #### Download ffmpeg-static
+
 Please follow the instructions [here](https://www.johnvansickle.com/ffmpeg/faq/) to download the ffmpeg-static package.
 
-```
+```bash
 # https://www.johnvansickle.com/ffmpeg/old-releases/
 wget https://www.johnvansickle.com/ffmpeg/old-releases/ffmpeg-4.4-amd64-static.tar.xz
 
@@ -44,9 +51,10 @@ tar -xvf ffmpeg-4.4-amd64-static.tar.xz
 export FFMPEG_PATH=./ffmpeg-git-20240629-amd64-static
 ```
 
-
 ### Download weights
+
 Run the following command to download the weights of the model:
+
 ```bash
 python scripts/download_weights.py
 ```
@@ -59,7 +67,8 @@ Weights include the following models:
 - [resnet18](https://download.pytorch.org/models/resnet18-5c106cde.pth)
 
 Finally, these weights should be organized in models as follows:
-```bash
+
+```
 rtlipsync/models/
 ├── musetalk
 │   └── musetalk.json
@@ -79,6 +88,7 @@ rtlipsync/models/
 ## Quick Start
 
 ### Inference
+
 ```bash
 python -m rtlipsync.inference.inference --inference_config configs/inference/test.yaml 
 ```
@@ -100,6 +110,7 @@ python -m rtlipsync.inference.inference --inference_config configs/inference/tes
 ```
 
 ### Real-time Inference
+
 ```bash
 python -m rtlipsync.inference.realtime_inference --inference_config configs/inference/realtime.yaml --batch_size 4
 ```
@@ -129,56 +140,333 @@ python -m rtlipsync.inference.realtime_inference --inference_config configs/infe
 The FastAPI application allows you to generate digital human videos and preprocess avatar data. Below are the steps to interact with the API.
 
 #### Start the FastAPI application
+
 To run the FastAPI server locally:
+
 ```bash
-uvicorn app.main:app --reload
+uvicorn main:app --port 8010 --reload
 ```
 
 #### FastAPI Endpoints
+
+__Old API endpoints:__
+
 1. __Check the status of the server:__
-- `GET /digital_human/check`
-- __Response__: 
-```
-{"status": "Server is running"}
-```
+   - `GET /digital_human/check`
+   - __Response__: 
+   ```json
+   {"status": "Server is running"}
+   ```
 
 2. __Generate Digital Human Video:__
-- `POST /digital_human/gen`
-- __Request Body__:
-```json
-{
-  "user_id": "user123",
-  "request_id": "req123", 
-  "streamer_id": "streamer1", # unique id for the streamer
-  "tts_path": "data/audio/yongen.wav", # path to the audio file
-  "chunk_id": 0
-}
-```
-- __Response__:
-```json
-{
-  "user_id": "user123",
-  "request_id": "req123",
-  "digital_human_mp4_path": "/path/to/video.mp4"
-}
-```
+   - `POST /digital_human/gen`
+   - __Request Body__:
+   ```json
+   {
+     "user_id": "user123",
+     "request_id": "req123", 
+     "streamer_id": "streamer1",
+     "tts_path": "data/audio/yongen.wav",
+     "chunk_id": 0
+   }
+   ```
+   - __Response__:
+   ```json
+   {
+     "user_id": "user123",
+     "request_id": "req123",
+     "digital_human_mp4_path": "/path/to/video.mp4"
+   }
+   ```
 
 3. __Prepare Avatar Data:__
-- `POST /digital_human/preprocess`
-- __Request Body__:
-```json
-{
-  "user_id": "user123",
-  "request_id": "req123",
-  "streamer_id": "streamer1",
-  "video_path": "/path/to/video.mp4"
-}
+   - `POST /digital_human/preprocess`
+   - __Request Body__:
+   ```json
+   {
+     "user_id": "user123",
+     "request_id": "req123",
+     "streamer_id": "streamer1",
+     "video_path": "/path/to/video.mp4"
+   }
+   ```
+   - __Response__:
+   ```json
+   {
+     "user_id": "user123",
+     "request_id": "req123"
+   }
+   ```
+
+__New API endpoints:__
+
+Here's how to use the API for real-time avatar voice imitation and audio file handling.
+
+### 1. **Setup and Run the API**
+
+First, ensure you have installed the necessary dependencies and have your environment set up with the required libraries (`fastapi`, `uvicorn`, `aiortc`, etc.).
+
+Run the FastAPI server with this command:
+
+```bash
+uvicorn main:app --host 0.0.0.0 --port 8010
 ```
-- __Response__:
-```json
-{
-  "user_id": "user123",
-  "request_id": "req123"
-}
+
+### 2. **Endpoints Overview**
+
+| Endpoint          | Method    | Description                                                   |
+|-------------------|-----------|---------------------------------------------------------------|
+| `/humanecho`      | WebSocket | Real-time WebSocket connection for streaming voice/text to the avatar. |
+| `/offer`          | POST      | WebRTC offer for setting up peer connections for video/audio streaming. |
+| `/humanaudio`     | POST      | Upload audio files for the avatar to imitate.                 |
+| `/set_audiotype`  | POST      | Set the audio type for real-time audio imitation.             |
+| `/record`         | POST      | Start or stop recording of the avatar's output video.         |
+| `/is_speaking`    | POST      | Check if the avatar is currently speaking.                    |
+
+### 3. **How to Use Each API Endpoint**
+
+First, ensure you have `aiohttp` installed to handle HTTP requests and WebSocket communication:
+
+```bash
+pip install aiohttp
 ```
+
+#### 3.1 **WebSocket for Real-time Voice/Text Imitation (`/humanecho`)**
+
+Use WebSocket to stream real-time voice or text, which the avatar will imitate.
+
+**Client Example**:
+
+```python
+import asyncio
+import aiohttp
+
+async def send_message_via_websocket():
+    async with aiohttp.ClientSession() as session:
+        async with session.ws_connect('ws://localhost:8010/humanecho') as ws:
+            print("WebSocket connection established!")
+            
+            # Send a text message
+            await ws.send_str("Hello, Avatar!")
+            
+            # Receive response (if any)
+            async for msg in ws:
+                if msg.type == aiohttp.WSMsgType.TEXT:
+                    print(f"Response from server: {msg.data}")
+                elif msg.type == aiohttp.WSMsgType.CLOSED:
+                    break
+
+# Run the WebSocket client
+asyncio.run(send_message_via_websocket())
+```
+
+#### 3.2 **Upload Audio Files for Avatar to Imitate (`/humanaudio`)**
+
+Send an audio file to the avatar for it to imitate. The avatar will sync its lips and movements with the audio provided.
+
+**Request Example (cURL)**:
+
+```bash
+curl -X POST "http://<server-ip>:8010/humanaudio" \
+    -F "sessionid=0" \
+    -F "file=@/path/to/your/audiofile.wav"
+```
+
+**Parameters**:
+- `sessionid`: The ID of the current session (e.g., `0` for the first session).
+- `file`: The path to the audio file you want to upload.
+
+```python
+import aiohttp
+
+async def upload_audio_file(session_id, file_path):
+    async with aiohttp.ClientSession() as session:
+        with open(file_path, 'rb') as file:
+            audio_data = {'file': file}
+            payload = {'sessionid': str(session_id)}
+            form = aiohttp.FormData()
+            form.add_field('sessionid', str(session_id))
+            form.add_field('file', open(file_path, 'rb'), filename=file_path)
+            
+            async with session.post('http://localhost:8010/humanaudio', data=form) as response:
+                response_json = await response.json()
+                print(f"Response: {response_json}")
+
+# Example usage
+session_id = 0
+file_path = '/path/to/your/audio.wav'
+asyncio.run(upload_audio_file(session_id, file_path))
+```
+
+#### 3.3 **POST WebRTC Offer (`/offer`)**
+
+This endpoint sets up the WebRTC peer connection to stream real-time video/audio. It's mainly used to establish a connection for streaming purposes (like using the avatar in real-time meetings or videos).
+
+**Request Example (cURL)**:
+
+```bash
+curl -X POST "http://<server-ip>:8010/offer" \
+    -H "Content-Type: application/json" \
+    -d '{"sdp": "<your_sdp>", "type": "offer"}'
+```
+
+You will need to pass the SDP (Session Description Protocol) information from the WebRTC offer. This typically comes from WebRTC client libraries in web applications.
+
+#### 3.4 **Set Audio Type (`/set_audiotype`)**
+
+This endpoint allows you to change the audio type or settings for the avatar's audio processing.
+
+**Request Example (cURL)**:
+
+```bash
+curl -X POST "http://<server-ip>:8010/set_audiotype" \
+    -H "Content-Type: application/json" \
+    -d '{
+          "sessionid": 0,
+          "audiotype": "stereo",
+          "reinit": false
+        }'
+```
+
+**Parameters**:
+- `sessionid`: The ID of the session (e.g., `0` for the first session).
+- `audiotype`: The type of audio processing (e.g., `"stereo"`).
+- `reinit`: Whether to reinitialize the audio settings (`true` or `false`).
+
+```python
+import aiohttp
+
+async def set_audio_type(session_id, audio_type, reinit=False):
+    payload = {
+        'sessionid': session_id,
+        'audiotype': audio_type,
+        'reinit': reinit
+    }
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.post('http://localhost:8010/set_audiotype', json=payload) as response:
+            result = await response.json()
+            print(f"Audio type set response: {result}")
+
+# Example usage
+asyncio.run(set_audio_type(0, 'stereo', reinit=True))
+```
+
+#### 3.5 **Record the Avatar's Video (`/record`)**
+
+Start or stop recording the avatar's video imitation.
+
+**Request Example (cURL)**:
+
+```bash
+curl -X POST "http://<server-ip>:8010/record" \
+    -H "Content-Type: application/json" \
+    -d '{
+          "sessionid": 0,
+          "type": "start_record"
+        }'
+```
+
+- `type`: Use `"start_record"` to start recording and `"end_record"` to stop recording.
+
+```python
+import aiohttp
+
+async def record_avatar(session_id, action_type):
+    payload = {
+        'sessionid': session_id,
+        'type': action_type  # either 'start_record' or 'end_record'
+    }
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.post('http://localhost:8010/record', json=payload) as response:
+            result = await response.json()
+            print(f"Record action response: {result}")
+
+# Example usage to start recording
+asyncio.run(record_avatar(0, 'start_record'))
+
+# Example usage to stop recording
+asyncio.run(record_avatar(0, 'end_record'))
+```
+
+#### 3.6 **Check if the Avatar is Speaking (`/is_speaking`)**
+
+Check if the avatar is currently speaking based on the audio being processed.
+
+**Request Example (cURL)**:
+
+```bash
+curl -X POST "http://<server-ip>:8010/is_speaking" \
+    -H "Content-Type: application/json" \
+    -d '{
+          "sessionid": 0
+        }'
+```
+
+**Response**:
+- Returns whether the avatar is speaking (e.g., `true` or `false`).
+
+```python
+import aiohttp
+
+async def is_avatar_speaking(session_id):
+    payload = {
+        'sessionid': session_id
+    }
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.post('http://localhost:8010/is_speaking', json=payload) as response:
+            result = await response.json()
+            print(f"Is avatar speaking: {result['data']}")
+
+# Example usage
+asyncio.run(is_avatar_speaking(0))
+```
+
+### 4. **Real-time Interaction Workflow**
+
+1. **Real-time Voice/Text Imitation**:
+   - Establish a WebSocket connection to `/humanecho`.
+   - Send voice or text data through WebSocket.
+   - The avatar will imitate the received text or audio.
+
+2. **Audio File Upload**:
+   - Send audio files to the `/humanaudio` endpoint.
+   - The avatar will sync its lips/movements based on the provided audio.
+
+3. **WebRTC Setup**:
+   - If you want to stream video/audio to and from the avatar, use `/offer` to establish a WebRTC connection.
+
+4. **Control Audio Settings**:
+   - Use `/set_audiotype` to change how the avatar handles audio.
+   
+5. **Recording**:
+   - Start and stop recording the avatar's output via `/record`.
+
+6. **Checking Avatar State**:
+   - Use `/is_speaking` to check if the avatar is actively speaking.
+
+### 5. **Typical Use Case Example**
+
+Let’s say you want to upload an audio file for the avatar to imitate:
+
+- First, ensure your server is running on `http://localhost:8010`.
+- You can upload an audio file using the following cURL command:
+
+```bash
+curl -X POST "http://localhost:8010/humanaudio" \
+    -F "sessionid=0" \
+    -F "file=@/path/to/audio.wav"
+```
+
+- After the file is processed, the avatar will synchronize its lips and movements to match the audio.
+
+For real-time interaction via WebSocket:
+
+- You can open a WebSocket connection to `ws://localhost:8010/humanecho` and stream live text or audio.
+  
+### Conclusion
+
+This API provides a flexible way to interact with an avatar that can mimic the voice/audio you provide. You can either use pre-recorded audio files or stream real-time voice input. The WebRTC setup allows you to stream video and audio, making it suitable for real-time video conferencing applications.
 

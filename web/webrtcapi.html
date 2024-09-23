@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WebRTC Webcam with Audio Upload</title>
+    <style>
+    button {
+        padding: 8px 16px;
+    }
+
+    video {
+        width: 100%;
+    }
+
+    .option {
+        margin-bottom: 8px;
+    }
+
+    #media {
+        max-width: 1280px;
+    }
+    </style>
+</head>
+<body>
+
+<div class="option">
+    <input id="use-stun" type="checkbox"/>
+    <label for="use-stun">Use STUN server</label>
+</div>
+<button id="start" onclick="start()">Start</button>
+<button id="stop" style="display: none" onclick="stop()">Stop</button>
+
+<!-- Audio File Upload Form -->
+<form id="audio-upload-form" enctype="multipart/form-data">
+    <div class="form-group">
+        <label for="audio-file">Upload Audio File:</label>
+        <input type="file" id="audio-file" name="file" accept="audio/*" required />
+    </div>
+    <button type="submit">Upload Audio</button>
+</form>
+
+<div id="media">
+    <h2>Media</h2>
+
+    <audio id="audio" autoplay="true"></audio>
+    <video id="video" style="width:600px;" autoplay="true" playsinline="true"></video>
+</div>
+
+<script src="client.js"></script>
+<script type="text/javascript" src="http://cdn.sockjs.org/sockjs-0.3.4.js"></script>
+<script type="text/javascript" src="https://ajax.aspnetcdn.com/ajax/jquery/jquery-2.1.1.min.js"></script>
+</body>
+<script type="text/javascript" charset="utf-8">
+$(document).ready(function() {
+    var host = window.location.hostname;
+
+    // WebSocket connection for real-time communication (if needed)
+    var ws = new WebSocket("ws://" + host + ":8000/humanecho");
+    ws.onopen = function() {
+        console.log('WebSocket Connected');
+    };
+    ws.onmessage = function(e) {
+        console.log('Received via WebSocket: ' + e.data);
+        // Handle incoming data if necessary
+    };
+    ws.onclose = function(e) {
+        console.log('WebSocket Closed');
+    };
+
+    // Audio File Upload Form Submission
+    $('#audio-upload-form').on('submit', function(e) {
+        e.preventDefault();
+
+        var formData = new FormData();
+        var fileInput = $('#audio-file')[0];
+
+        if (fileInput.files.length === 0) {
+            alert("Please select an audio file to upload.");
+            return;
+        }
+
+        formData.append('file', fileInput.files[0]);
+        formData.append('sessionid', 0);  // Modify as needed
+
+        $.ajax({
+            url: '/humanaudio',
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                console.log('Audio file uploaded successfully.');
+                console.log(response);
+            },
+            error: function(xhr, status, error) {
+                console.error('Error uploading audio file:', error);
+                console.error(xhr.responseText);
+            }
+        });
+    });
+});
+</script>
+</html>

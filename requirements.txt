@@ -15,9 +15,12 @@ imageio[ffmpeg]
 
 omegaconf
 ffmpeg-python
-gradio
 streamlit
-spaces
 moviepy
 fastapi 
 uvicorn
+
+aiortc
+pyaudio
+pydub
+sounddevice

@@ -1,4 +1,5 @@
 from pathlib import Path
+
 from .realtime_inference import DIGITAL_HUMAN_HANDLER, gen_digital_human_preprocess, gen_digital_human_video
 from .config import WEB_CONFIGS
 

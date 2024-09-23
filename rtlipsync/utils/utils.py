@@ -23,6 +23,17 @@ def load_all_model():
     pe = PositionalEncoding(d_model=384)
     return audio_processor,vae,unet,pe
 
+def load_audio_model():
+    audio_processor = Audio2Feature(model_path="./models/whisper/tiny.pt")
+    return audio_processor
+
+def load_diffusion_model():
+    vae = VAE(model_path = "./models/sd-vae-ft-mse/")
+    unet = UNet(unet_config="./models/musetalk/musetalk.json",
+                model_path ="./models/musetalk/pytorch_model.bin")
+    pe = PositionalEncoding(d_model=384)
+    return vae,unet,pe
+
 def get_file_type(video_path):
     _, ext = os.path.splitext(video_path)
 
