@@ -47,8 +47,8 @@ def osmakedirs(path_list):
         os.makedirs(path) if not os.path.exists(path) else None
     
 
-@torch.no_grad() 
 class Avatar:
+    @torch.no_grad()
     def __init__(self, avatar_id, video_path, bbox_shift, batch_size, preparation):
         self.avatar_id = avatar_id
         self.video_path = video_path
@@ -70,7 +70,8 @@ class Avatar:
         self.batch_size = batch_size
         self.idx = 0
         self.init()
-        
+    
+    @torch.no_grad() 
     def init(self):
         if self.preparation:
             if os.path.exists(self.avatar_path):
@@ -132,6 +133,7 @@ class Avatar:
                 input_mask_list = sorted(input_mask_list, key=lambda x: int(os.path.splitext(os.path.basename(x))[0]))
                 self.mask_list_cycle = read_imgs(input_mask_list)
     
+    @torch.no_grad() 
     def prepare_material(self):
         print("preparing data materials ... ...")
         with open(self.avatar_info_path, "w") as f:
@@ -188,6 +190,7 @@ class Avatar:
         torch.save(self.input_latent_list_cycle, os.path.join(self.latents_out_path)) 
         #     
         
+    @torch.no_grad() 
     def process_frames(self, 
                        res_frame_queue,
                        video_len,
@@ -218,6 +221,7 @@ class Avatar:
                 cv2.imwrite(f"{self.avatar_path}/tmp/{str(self.idx).zfill(8)}.png",combine_frame)
             self.idx = self.idx + 1
 
+    @torch.no_grad() 
     def inference(self, 
                   audio_path, 
                   out_vid_name, 
@@ -260,7 +264,7 @@ class Avatar:
         # Close the queue and sub-thread after all tasks are completed
         process_thread.join()
         
-        if args.skip_save_images is True:
+        if skip_save_images is True:
             print('Total process time of {} frames without saving images = {}s'.format(
                         video_num,
                         time.time()-start_time))
@@ -269,7 +273,7 @@ class Avatar:
                         video_num,
                         time.time()-start_time))
 
-        if out_vid_name is not None and args.skip_save_images is False: 
+        if out_vid_name is not None and skip_save_images is False: 
             # optional
             cmd_img2video = f"ffmpeg -y -v warning -r {fps} -f image2 -i {self.avatar_path}/tmp/%08d.png -vcodec libx264 -vf format=rgb24,scale=out_color_matrix=bt709,format=yuv420p -crf 18 {self.avatar_path}/temp.mp4"
             print(cmd_img2video)

@@ -3,7 +3,7 @@ import numpy as np
 import cv2
 from face_parsing import FaceParsing
 
-fp = FaceParsing()
+# fp = FaceParsing()
 
 def get_crop_box(box, expand):
     x, y, x1, y1 = box
@@ -13,8 +13,8 @@ def get_crop_box(box, expand):
     crop_box = [x_c-s, y_c-s, x_c+s, y_c+s]
     return crop_box, s
 
-def face_seg(image):
-    seg_image = fp(image)
+def face_seg(image, fp_model):
+    seg_image = fp_model(image)
     if seg_image is None:
         print("error, no person_segment")
         return None
@@ -22,7 +22,7 @@ def face_seg(image):
     seg_image = seg_image.resize(image.size)
     return seg_image
 
-def get_image(image,face,face_box,upper_boundary_ratio = 0.5,expand=1.2):
+def get_image(image,face,face_box,fp_model,upper_boundary_ratio = 0.5,expand=1.2):
     #print(image.shape)
     #print(face.shape)
     
@@ -38,7 +38,7 @@ def get_image(image,face,face_box,upper_boundary_ratio = 0.5,expand=1.2):
     face_large = body.crop(crop_box)
     ori_shape = face_large.size
 
-    mask_image = face_seg(face_large)
+    mask_image = face_seg(face_large, fp_model)
     mask_small = mask_image.crop((x-x_s, y-y_s, x1-x_s, y1-y_s))
     mask_image = Image.new('L', ori_shape, 0)
     mask_image.paste(mask_small, (x-x_s, y-y_s, x1-x_s, y1-y_s))
@@ -58,7 +58,7 @@ def get_image(image,face,face_box,upper_boundary_ratio = 0.5,expand=1.2):
     body = np.array(body)
     return body[:,:,::-1]
 
-def get_image_prepare_material(image,face_box,upper_boundary_ratio = 0.5,expand=1.2):
+def get_image_prepare_material(image,face_box,fp_model,upper_boundary_ratio = 0.5,expand=1.2):
     body = Image.fromarray(image[:,:,::-1])
 
     x, y, x1, y1 = face_box
@@ -69,7 +69,7 @@ def get_image_prepare_material(image,face_box,upper_boundary_ratio = 0.5,expand=
     face_large = body.crop(crop_box)
     ori_shape = face_large.size
 
-    mask_image = face_seg(face_large)
+    mask_image = face_seg(face_large, fp_model)
     mask_small = mask_image.crop((x-x_s, y-y_s, x1-x_s, y1-y_s))
     mask_image = Image.new('L', ori_shape, 0)
     mask_image.paste(mask_small, (x-x_s, y-y_s, x1-x_s, y1-y_s))
