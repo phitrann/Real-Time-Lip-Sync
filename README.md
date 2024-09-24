@@ -68,6 +68,24 @@ It uses Whisper-tiny's audio features to perform the facial modifications. The a
 
 ![](assets/musetalk_arc.jpg)
 
+Based on the project structures and descriptions in the sources, we can infer the following about MuseTalk's likely involvement in the lip-syncing pipeline:
+
+1. __Input:__ The system takes an input image or video of a person's face and an audio track as input.
+
+2. __Preprocessing:__ 
+    - __Face Detection and Parsing:__ Models like dwpose and face-parse-bisent are used to detect the face in the input image/video and segment facial features (eyes, nose, mouth).
+    - __Audio Encoding:__ The audio input is likely converted into a suitable representation, possibly using models like Whisper to extract phonetic features or directly using raw audio features.
+    - __VAE Encoding:__ A Stable Diffusion Variational Autoencoder (VAE), potentially the "sd-vae-ft-mse," might be used to encode the input face image into a latent space representation. 
+
+3. __MuseTalk Lip Syncing:__
+    - __Latent Space Modification:__ MuseTalk operates in the latent space of the VAE, meaning it modifies the encoded facial features based on the input audio features.
+    - __UNet Architecture:__ MuseTalk borrows the UNet architecture from Stable Diffusion for its generation network. This UNet likely takes the latent face representation and audio embeddings as input and outputs a modified latent face representation with synchronized lip movements.
+    - __Single-Step Inpainting:__ Unlike diffusion models, MuseTalk performs lip-syncing as a single-step inpainting process in the latent space. This suggests an efficient and potentially real-time capable approach.
+
+4. __Postprocessing:__
+    - __VAE Decoding:__ The modified latent face representation is decoded back into an image using the VAE decoder.
+    - __Blending and Output Generation:__ The generated lip movements are blended with the original input image/video frame to create the final lip-synced output.
+
 ## Getting Started
 
 ### Installation
