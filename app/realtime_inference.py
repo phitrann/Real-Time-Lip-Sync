@@ -480,7 +480,7 @@ class Avatar:
 
 
 def digital_human_preprocess(model_dir, use_float16, video_path, work_dir, fps, bbox_shift):
-
+    logger.info("Initializing digital human model...")
     avatar = Avatar(
         avatar_id="1",  # lelemiao
         work_dir=work_dir,
@@ -561,18 +561,18 @@ else:
     DIGITAL_HUMAN_HANDLER = None
 
 
-if __name__ == "__main__":
+# if __name__ == "__main__":
 
-    data_preparation = True
-    video_path = "./data/video/elon.mp4"
-    bbox_shift = 5
-    avatar = Avatar(
-        avatar_id="elon", video_path=video_path, bbox_shift=bbox_shift, batch_size=4, preparation=data_preparation
-    )
+#     data_preparation = True
+#     video_path = "./data/video/elon.mp4"
+#     bbox_shift = 5
+#     avatar = Avatar(
+#         avatar_id="elon", video_path=video_path, bbox_shift=bbox_shift, batch_size=4, preparation=data_preparation
+#     )
 
-    avatar.inference(
-        audio_path=r"./data/audio/elon.wav",
-        out_vid_name="elon_elon",
-        fps=25,
-        skip_save_images=False,
-    )
+#     avatar.inference(
+#         audio_path=r"./data/audio/elon.wav",
+#         out_vid_name="elon_elon",
+#         fps=25,
+#         skip_save_images=False,
+#     )

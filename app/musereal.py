@@ -1,6 +1,7 @@
 # musereal.py
 
 import math
+import fractions
 import torch
 import numpy as np
 import subprocess
@@ -128,24 +129,29 @@ class BaseReal:
                     videostream.width = videoframe.width
                     videostream.height = videoframe.height
                     init = False
-                for packet in videostream.encode(videoframe):
+                packet = videostream.encode(videoframe)
+                if packet:
                     self.container.mux(packet)
-                for k in range(2):
+                for _ in range(2):  # Assuming 2 audio frames per video frame
                     audioframe = self.recordq_audio.get(block=True, timeout=1)
-                    audioframe.pts = int(round((framenum * 2 + k) * 0.02 / audiostream.codec_context.time_base))
-                    audioframe.dts = audioframe.pts
-                    for packet in audiostream.encode(audioframe):
+                    audioframe.pts = int(round((framenum * 2) * 0.02 / audiostream.codec_context.time_base))
+                    audioframe.time_base = Fraction(1, 16000)
+                    packet = audiostream.encode(audioframe)
+                    if packet:
                         self.container.mux(packet)
                 framenum += 1
             except queue.Empty:
                 print('record queue empty,')
                 continue
             except Exception as e:
-                print(e)
+                print(f"Recording error: {e}")
                 break
-        for packet in videostream.encode(None):
+         # Flush and close streams
+        packet = videostream.encode(None)
+        if packet:
             self.container.mux(packet)
-        for packet in audiostream.encode(None):
+        packet = audiostream.encode(None)
+        if packet:
             self.container.mux(packet)
         self.container.close()
         self.recordq_video.queue.clear()
@@ -232,9 +238,9 @@ def inference(render_event, batch_size, latents_out_path, audio_feat_queue, audi
                 is_all_silence = True
                 audio_frames = []
                 for _ in range(batch_size * 2):
-                    frame, type = audio_out_queue.get()
-                    audio_frames.append((frame, type))
-                    if type == 0:
+                    frame, frame_type  = audio_out_queue.get()
+                    audio_frames.append((frame, frame_type ))
+                    if frame_type  == 0:
                         is_all_silence = False
                 if is_all_silence:
                     for i in range(batch_size):
@@ -263,7 +269,7 @@ def inference(render_event, batch_size, latents_out_path, audio_feat_queue, audi
                     counttime += (time.perf_counter() - t)
                     count += batch_size
                     if count >= 100:
-                        print(f"------actual avg infer fps:{count / counttime:.4f}")
+                        print(f"Actual average inference FPS: {count / counttime:.4f}")
                         count = 0
                         counttime = 0
                     for i, res_frame in enumerate(recon):
@@ -331,7 +337,9 @@ class MuseReal(BaseReal):
         self.process = mp.Process(target=inference, args=(self.render_event, self.batch_size, self.latents_out_path,
                                            self.asr.feat_queue, self.asr.output_queue, self.res_frame_queue, self.quit_event))
         
-        self.process.start()
+        self.process.start() 
+        
+        self.loop = asyncio.get_event_loop()
         
         # # Register signal handlers to clean up on reload or termination
         # signal.signal(signal.SIGINT, self.cleanup_signal_handler)
@@ -364,21 +372,9 @@ class MuseReal(BaseReal):
     
     @torch.no_grad()
     def __loadmodels(self):
-        # Check if models are already loaded
-        if MuseReal._diffusion_model is None:
-            print("Loading diffusion model...")
-            # Load the diffusion model only once
-            MuseReal._diffusion_model = load_diffusion_model()  # Ensure this returns a tuple (vae, unet, pe)
-        else:
-            print("Using cached diffusion model.")
-        
-        if MuseReal._audio_processor is None:
-            print("Loading audio model...")
-            MuseReal._audio_processor = load_audio_model()  # Load audio model only once
-
-        # Use class-level variables
-        self.audio_processor = MuseReal._audio_processor
-        self.diffusion_model = MuseReal._diffusion_model
+        print("Loading diffusion and audio models...")
+        self.diffusion_model = load_diffusion_model()
+        self.audio_processor = load_audio_model()
 
     @torch.no_grad()
     def __loadavatar(self):
@@ -405,45 +401,73 @@ class MuseReal(BaseReal):
 
     @torch.no_grad()
     def process_frames(self, quit_event, loop=None, audio_track=None, video_track=None):
-        while not quit_event.is_set():
+        """Process frames and put them into the video and audio tracks."""
+        while not self.quit_event.is_set():
             try:
                 res_frame, idx, audio_frames = self.res_frame_queue.get(block=True, timeout=1)
             except queue.Empty:
                 continue
+            
+            # Check if the event loop is running
+            if self.loop.is_closed():
+                print("Event loop is closed, stopping process_frames")
+                break
+            
             if audio_frames[0][1] != 0 and audio_frames[1][1] != 0:
                 self.speaking = False
                 combine_frame = self.frame_list_cycle[idx]
             else:
                 self.speaking = True
                 bbox = self.coord_list_cycle[idx]
-                ori_frame = copy.deepcopy(self.frame_list_cycle[idx])
+                ori_frame = self.frame_list_cycle[idx].copy()
                 x1, y1, x2, y2 = bbox
                 try:
-                    res_frame = cv2.resize(res_frame.cpu().numpy().astype(np.uint8), (x2 - x1, y2 - y1))
-                except:
+                    if res_frame is None:
+                        print("res_frame is None, skipping frame.")
+                        continue
+
+                    if isinstance(res_frame, torch.Tensor):
+                        res_frame = res_frame.cpu().numpy().astype(np.uint8)
+                    elif isinstance(res_frame, np.ndarray):
+                        res_frame = res_frame.astype(np.uint8)
+                    else:
+                        print(f"Unexpected type for res_frame: {type(res_frame)}")
+                        continue
+
+                    res_frame = cv2.resize(res_frame, (x2 - x1, y2 - y1))
+                except Exception as e:
+                    print(f"Error resizing frame: {e}")
                     continue
                 mask = self.mask_list_cycle[idx]
                 mask_crop_box = self.mask_coords_list_cycle[idx]
                 combine_frame = get_image_blending(ori_frame, res_frame, bbox, mask, mask_crop_box)
 
+            # Create VideoFrame
             image = combine_frame
-            new_frame = VideoFrame.from_ndarray(image, format="bgr24")
-            asyncio.run_coroutine_threadsafe(video_track._queue.put(new_frame), loop)
-            if self.recording:
-                self.recordq_video.put(new_frame)
+            new_video_frame = VideoFrame.from_ndarray(image, format="bgr24")
+            new_video_frame.pts = None
+            new_video_frame.time_base = fractions.Fraction(1, self.fps)
 
-            for audio_frame in audio_frames:
-                frame, type = audio_frame
-                frame = (frame * 32767).astype(np.int16)
-                new_frame = AudioFrame(format='s16', layout='mono', samples=frame.shape[0])
-                new_frame.planes[0].update(frame.tobytes())
-                new_frame.sample_rate = 16000
-                asyncio.run_coroutine_threadsafe(audio_track._queue.put(new_frame), loop)
+            # Put the video frame into the video track queue safely
+            asyncio.run_coroutine_threadsafe(video_track._queue.put(new_video_frame), loop)
+            
+            if self.recording:
+                self.recordq_video.put(new_video_frame)
+
+            # Handle audio frames
+            for audio_frame_data, frame_type in audio_frames:
+                audio_samples = (audio_frame_data * 32767).astype(np.int16)
+                audio_samples = audio_samples.reshape(1, -1)  # Reshape to (channels, samples)
+                new_audio_frame = AudioFrame.from_ndarray(audio_samples, format='s16', layout='mono')
+                new_audio_frame.sample_rate = self.sample_rate
+
+                # Put the audio frame into the audio track queue safely
+                asyncio.run_coroutine_threadsafe(audio_track._queue.put(new_audio_frame), loop)
+
                 if self.recording:
-                    self.recordq_audio.put(new_frame)
+                    self.recordq_audio.put(new_audio_frame)
         print('musereal process_frames thread stop')
 
-    @torch.no_grad()
     def render(self, quit_event, loop=None, audio_track=None, video_track=None):
         self.init_customindex()
         process_thread = Thread(target=self.process_frames, args=(quit_event, loop, audio_track, video_track))
@@ -453,52 +477,53 @@ class MuseReal(BaseReal):
         while not quit_event.is_set():
             self.asr.run_step()
             if video_track._queue.qsize() >= 1.5 * self.opt.batch_size:
-                print('sleep qsize=', video_track._queue.qsize())
+                print('Sleeping, video queue size:', video_track._queue.qsize())
                 time.sleep(0.04 * video_track._queue.qsize() * 0.8)
         self.render_event.clear()
-        print('musereal thread stop')
+        print('musereal render thread stop')
 
     @torch.no_grad()
     async def get_video_frame(self):
-        # Implement logic to retrieve video frame
+        """Retrieve the next video frame."""
         try:
-            res_frame, idx, _ = await asyncio.get_event_loop().run_in_executor(None, self.res_frame_queue.get)
-            if res_frame is not None:
-                bbox = self.coord_list_cycle[idx]
-                ori_frame = copy.deepcopy(self.frame_list_cycle[idx])
-                x1, y1, x2, y2 = bbox
-                res_frame = cv2.resize(res_frame.cpu().numpy().astype(np.uint8), (x2 - x1, y2 - y1))
-                mask = self.mask_list_cycle[idx]
-                mask_crop_box = self.mask_coords_list_cycle[idx]
-                combine_frame = get_image_blending(ori_frame, res_frame, bbox, mask, mask_crop_box)
-            else:
-                combine_frame = self.frame_list_cycle[idx]
-            image = combine_frame
-            new_frame = VideoFrame.from_ndarray(image, format="bgr24")
-            return new_frame
+            frame = await self.video_queue.get()
+            return frame
         except Exception as e:
             print(f"Error getting video frame: {e}")
             return None
 
     @torch.no_grad()
     async def get_audio_frame(self):
-        # Implement logic to retrieve audio frame
+        """Retrieve the next audio frame."""
         try:
-            audio_frame = await asyncio.get_event_loop().run_in_executor(None, self.asr.output_queue.get)
-            frame, _ = audio_frame
-            frame = (frame * 32767).astype(np.int16)
-            new_frame = AudioFrame(format='s16', layout='mono', samples=frame.shape[0])
-            new_frame.planes[0].update(frame.tobytes())
-            new_frame.sample_rate = 16000
-            return new_frame
+            frame = await self.audio_queue.get()
+            return frame
         except Exception as e:
             print(f"Error getting audio frame: {e}")
             return None
+        
+    def start_rendering(self):
+        """Start the rendering process."""
+        self.video_queue = asyncio.Queue(maxsize=100)
+        self.audio_queue = asyncio.Queue(maxsize=200)
+        self.process_thread = Thread(target=self.process_frames, args=(self.quit_event, self.loop, self.audio_queue, self.video_queue))
+        self.process_thread.start()
+        self.render_event.set()
+        
+    def stop_rendering(self):
+        """Stop the rendering process."""
+        self.quit_event.set()
+        if self.process_thread.is_alive():
+            self.process_thread.join()
+        self.render_event.clear()
 
-    @torch.no_grad()
+    def put_audio_frame(self, audio_chunk):
+        """Override to handle incoming audio frames."""
+        super().put_audio_frame(audio_chunk)
+
     def put_audio_file(self, filebytes):
+        """Override to handle audio files."""
         super().put_audio_file(filebytes)
 
-    @torch.no_grad()
     def set_curr_state(self, audiotype, reinit):
         super().set_curr_state(audiotype, reinit)

@@ -16,10 +16,15 @@ imageio[ffmpeg]
 omegaconf
 ffmpeg-python
 streamlit
+streamlit-webrtc
 moviepy
 fastapi 
 uvicorn
 
 aiortc
+av
+websockets
+websocket-client
+aiohttp
 pydub
 sounddevice

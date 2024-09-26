@@ -121,11 +121,11 @@ Please follow the instructions [here](https://www.johnvansickle.com/ffmpeg/faq/)
 
 ```bash
 # https://www.johnvansickle.com/ffmpeg/old-releases/
-wget https://www.johnvansickle.com/ffmpeg/old-releases/ffmpeg-4.4-amd64-static.tar.xz
+wget https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
 
-tar -xvf ffmpeg-4.4-amd64-static.tar.xz
+tar -xvf ffmpeg-release-amd64-static.tar.xz
 
-export FFMPEG_PATH=./ffmpeg-git-20240629-amd64-static
+export FFMPEG_PATH=./models/drivers/ffmpeg-release-amd64-static.tar.xz
 ```
 
 ### Download weights
@@ -297,7 +297,7 @@ uvicorn main:app --host 0.0.0.0 --port 8010
 | `/offer`          | POST      | WebRTC offer for setting up peer connections for video/audio streaming. |
 | `/humanaudio`     | POST      | Upload audio files for the avatar to imitate.                 |
 | `/set_audiotype`  | POST      | Set the audio type for real-time audio imitation.             |
-| `/record`         | POST      | Start or stop recording of the avatar's output video.         |
+| `/record`         | POST      | Save the digital human video on the server, the file address is data/record_lasted.mp4         |
 | `/is_speaking`    | POST      | Check if the avatar is currently speaking.                    |
 
 ### 3. **How to Use Each API Endpoint**

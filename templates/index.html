@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Real-Time Video Transfer</title>
+</head>
+<body>
+    <h1>Real-Time Video Transfer</h1>
+    <input type="file" id="audioFileInput" accept="audio/*">
+    <button id="startButton" disabled>Start Streaming</button>
+    <video id="video" autoplay playsinline controls></video>
+
+    <script>
+        var pc = null;
+        var ws = null;
+        var video = document.getElementById("video");
+        var audioFileInput = document.getElementById("audioFileInput");
+        var startButton = document.getElementById("startButton");
+        var audioData = null;
+
+        audioFileInput.onchange = function(event) {
+            var file = event.target.files[0];
+            if (file) {
+                // Read the audio file as an ArrayBuffer
+                var reader = new FileReader();
+                reader.onload = function(e) {
+                    audioData = e.target.result;
+                    startButton.disabled = false;
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        };
+
+        startButton.onclick = function() {
+            if (audioData) {
+                start();
+            }
+        };
+
+        // Function to convert ArrayBuffer to Base64 string
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            let bytes = new Uint8Array(buffer);
+            let len = bytes.byteLength;
+            for (let i = 0; i < len; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return window.btoa(binary);
+        }
+
+        async function start() {
+            pc = new RTCPeerConnection();
+
+            pc.ontrack = function(event) {
+                if (event.track.kind === "video") {
+                    video.srcObject = event.streams[0];
+                }
+            };
+
+            // Create an offer and set the local description
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+
+            // Send the offer to the server via HTTP POST
+            const response = await fetch('/offer', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    'sdp': pc.localDescription.sdp,
+                    'type': pc.localDescription.type
+                })
+            });
+
+            const answer = await response.json();
+
+            // Set the remote description with the SDP answer
+            await pc.setRemoteDescription(new RTCSessionDescription({
+                'type': answer.type,
+                'sdp': answer.sdp
+            }));
+
+            // Set up WebSocket connection for audio data
+            ws = new WebSocket("ws://" + window.location.host + "/ws");
+
+            ws.onopen = function() {
+                // Convert the audio data to Base64 string
+                var audioDataBase64 = arrayBufferToBase64(audioData);
+
+                // Send the audio data to the server
+                ws.send(JSON.stringify({
+                    'type': 'audio',
+                    'data': audioDataBase64
+                }));
+            };
+
+            ws.onmessage = function(event) {
+                // Handle messages from the server if needed
+            };
+
+            ws.onclose = function() {
+                console.log("WebSocket connection closed");
+            };
+
+            ws.onerror = function(error) {
+                console.log("WebSocket error: " + error);
+            };
+        }
+    </script>
+</body>
+</html>

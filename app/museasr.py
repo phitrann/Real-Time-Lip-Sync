@@ -32,8 +32,10 @@ class BaseASR:
     def pause_talk(self):
         self.queue.queue.clear()
 
-    def put_audio_frame(self,audio_chunk): #16khz 20ms pcm
-        self.queue.put(audio_chunk)
+    def put_audio_frame(self, audio_chunk):  # 16khz 20ms pcm
+        # Convert audio_chunk from bytes to NumPy array
+        audio_array = np.frombuffer(audio_chunk, dtype=np.int16).astype(np.float32) / 32768.0  # Normalize to [-1, 1]
+        self.queue.put(audio_array)
 
     def get_audio_frame(self):        
         try:
@@ -80,22 +82,41 @@ class MuseASR(BaseASR):
         if self.audio_processor is None:
             self.audio_processor = load_audio_model()
         start_time = time.time()
-        for _ in range(self.batch_size*2):
-            audio_frame,type=self.get_audio_frame()
-            self.frames.append(audio_frame)
-            self.output_queue.put((audio_frame,type))
+        
+        for _ in range(self.batch_size * 2):
+            audio_frame, frame_type = self.get_audio_frame()
+            if audio_frame is not None and audio_frame.size > 0:
+                # Append valid audio frames
+                self.frames.append(audio_frame)
+                self.output_queue.put((audio_frame, frame_type))
+            else:
+                print("Received empty or invalid audio frame, appending silence.")
+                # Append a zero-filled frame to maintain timing consistency
+                zero_frame = np.zeros(self.chunk, dtype=np.float32)
+                self.frames.append(zero_frame)
+                self.output_queue.put((zero_frame, frame_type))
         
         if len(self.frames) <= self.stride_left_size + self.stride_right_size:
             return
         
-        inputs = np.concatenate(self.frames) # [N * chunk]
+        # Filter out invalid frames before concatenation
+        valid_frames = [frame for frame in self.frames if frame is not None and frame.size > 0]
+        if not valid_frames:
+            print("No valid audio frames to process, skipping run_step.")
+            return
+
+        inputs = np.concatenate(valid_frames)  # [N * chunk]
         whisper_feature = self.audio_processor.audio2feat(inputs)
-        # for feature in whisper_feature:
-        #     self.audio_feats.append(feature)        
-        print(f"processing audio costs {(time.time() - start_time) * 1000}ms, inputs shape:{inputs.shape} whisper_feature len:{len(whisper_feature)}")
-        whisper_chunks = self.audio_processor.feature2chunks(feature_array=whisper_feature,fps=self.fps/2,batch_size=self.batch_size,start=self.stride_left_size/2 )
-        #print(f"whisper_chunks len:{len(whisper_chunks)},self.audio_feats len:{len(self.audio_feats)},self.output_queue len:{self.output_queue.qsize()}")
-        #self.audio_feats = self.audio_feats[-(self.stride_left_size + self.stride_right_size):]
+        
+        print(f"Processing audio took {(time.time() - start_time) * 1000:.2f} ms, inputs shape: {inputs.shape}, whisper_feature length: {len(whisper_feature)}")
+        
+        whisper_chunks = self.audio_processor.feature2chunks(
+            feature_array=whisper_feature,
+            fps=self.fps / 2,
+            batch_size=self.batch_size,
+            start=self.stride_left_size / 2
+        )
+        
         self.feat_queue.put(whisper_chunks)
-        # discard the old part to save memory
+        # Discard the old frames to save memory
         self.frames = self.frames[-(self.stride_left_size + self.stride_right_size):]

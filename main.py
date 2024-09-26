@@ -83,21 +83,24 @@ import time
 import numpy as np
 
 from threading import Thread, Event
+from typing import List, Dict
 import multiprocessing
 from loguru import logger
 import argparse
+import uuid
 # Import the worker functions
-from typing import List
 
 from aiortc import RTCPeerConnection, RTCSessionDescription
 from aiortc.contrib.media import MediaPlayer, MediaRelay
 from aiortc.rtcrtpsender import RTCRtpSender
-from aiortc import MediaStreamTrack
+from aiortc import MediaStreamTrack, VideoStreamTrack
 import aiohttp
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 
 from app.webrtc import HumanPlayer
 from app.musereal import MuseReal
-from app.worker import gen_digital_human_video_app, preprocess_digital_human_app
+# from app.worker import gen_digital_human_video_app, preprocess_digital_human_app
 
 from contextlib import asynccontextmanager
 # Ensure that the start method is set before any multiprocessing code
@@ -109,8 +112,12 @@ from contextlib import asynccontextmanager
 #     pass
 
 
-nerfreals: List[MuseReal] = []
-statreals: List[int] = []
+# nerfreals: List[MuseReal] = []
+# statreals: List[int] = []
+
+# Initialize MuseReal instances as a dictionary
+nerfreals: Dict[str, MuseReal] = {}
+pcs = set()
 pcs = set()
 
 def get_args():
@@ -137,6 +144,9 @@ def get_args():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # global nerfreals, statreals
+    global nerfreals
+    
     # Startup tasks: Initialize MuseReal instances
     opt = get_args()
     # Load custom video configuration if provided
@@ -150,8 +160,12 @@ async def lifespan(app: FastAPI):
     
     for _ in range(opt.max_session):
         nerfreal = MuseReal(opt)
-        nerfreals.append(nerfreal)
-        statreals.append(0)
+        # nerfreals.append(nerfreal)
+        # statreals.append(0)
+        
+        # Assign a unique sessionid for each MuseReal instance
+        sessionid = str(uuid.uuid4())
+        nerfreals[sessionid] = nerfreal
     pagename = 'webrtcapi.html' if opt.transport == 'webrtc' else 'echoapi.html'
     print(f'start http server; http://<serverip>:{opt.listenport}/{pagename}')
 
@@ -175,50 +189,54 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Ensure the 'web' directory exists or adjust the path accordingly
-web_dir = os.path.join(os.path.dirname(__file__), 'web')
-if not os.path.exists(web_dir):
-    os.makedirs(web_dir)
+# # Ensure the 'web' directory exists or adjust the path accordingly
+# static_dir = os.path.join(os.path.dirname(__file__), 'static')
+# if not os.path.exists(static_dir):
+#     os.makedirs(static_dir)
 
-# Mount static files (if needed)
-# app.mount("/", StaticFiles(directory=web_dir), name="static")
+# # Mount static files (if needed)
+# app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-def get_nerfreals():
-    return nerfreals
+# Set up templates directory
+templates = Jinja2Templates(directory="templates")
 
-class DigitalHumanItem(BaseModel):
-    user_id: str  # User identifier
-    request_id: str  # Request ID
-    streamer_id: str  # Digital human ID
-    tts_path: str = ""  # Text path
-    chunk_id: int = 0  # Sentence ID
+@app.get("/")
+async def get(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
 
-
-class DigitalHumanPreprocessItem(BaseModel):
-    user_id: str  # User identifier
-    request_id: str  # Request ID
-    streamer_id: str  # Digital human ID
-    video_path: str  # Digital human video path
-
-@app.post("/digital_human/gen")
-async def get_digital_human(dg_item: DigitalHumanItem):
-    """Generate digital human video"""
-    save_tag = (
-        dg_item.request_id + ".mp4" if dg_item.chunk_id == 0 else dg_item.request_id + f"-{str(dg_item.chunk_id).zfill(8)}.mp4"
-    )
-    mp4_path = await gen_digital_human_video_app(dg_item.streamer_id, dg_item.tts_path, save_tag)
-    logger.info(f"digital human mp4 path = {mp4_path}")
-    return {"user_id": dg_item.user_id, "request_id": dg_item.request_id, "digital_human_mp4_path": mp4_path}
+# class DigitalHumanItem(BaseModel):
+#     user_id: str  # User identifier
+#     request_id: str  # Request ID
+#     streamer_id: str  # Digital human ID
+#     tts_path: str = ""  # Text path
+#     chunk_id: int = 0  # Sentence ID
 
 
-@app.post("/digital_human/preprocess")
-async def preprocess_digital_human(preprocess_item: DigitalHumanPreprocessItem):
-    """Digital human video preprocessing for adding new digital humans"""
+# class DigitalHumanPreprocessItem(BaseModel):
+#     user_id: str  # User identifier
+#     request_id: str  # Request ID
+#     streamer_id: str  # Digital human ID
+#     video_path: str  # Digital human video path
 
-    _ = await preprocess_digital_human_app(str(preprocess_item.streamer_id), preprocess_item.video_path)
+# @app.post("/digital_human/gen")
+# async def get_digital_human(dg_item: DigitalHumanItem):
+#     """Generate digital human video"""
+#     save_tag = (
+#         dg_item.request_id + ".mp4" if dg_item.chunk_id == 0 else dg_item.request_id + f"-{str(dg_item.chunk_id).zfill(8)}.mp4"
+#     )
+#     mp4_path = await gen_digital_human_video_app(dg_item.streamer_id, dg_item.tts_path, save_tag)
+#     logger.info(f"digital human mp4 path = {mp4_path}")
+#     return {"user_id": dg_item.user_id, "request_id": dg_item.request_id, "digital_human_mp4_path": mp4_path}
 
-    logger.info(f"digital human process for {preprocess_item.streamer_id} done")
-    return {"user_id": preprocess_item.user_id, "request_id": preprocess_item.request_id}
+
+# @app.post("/digital_human/preprocess")
+# async def preprocess_digital_human(preprocess_item: DigitalHumanPreprocessItem):
+#     """Digital human video preprocessing for adding new digital humans"""
+
+#     _ = await preprocess_digital_human_app(str(preprocess_item.streamer_id), preprocess_item.video_path)
+
+#     logger.info(f"digital human process for {preprocess_item.streamer_id} done")
+#     return {"user_id": preprocess_item.user_id, "request_id": preprocess_item.request_id}
 
 
 @app.websocket("/humanecho")
@@ -233,148 +251,160 @@ async def echo_socket(websocket: WebSocket):
         nerfreals[0].put_msg_txt(message)
 
 
+# @app.websocket("/ws")
+# async def websocket_endpoint(websocket: WebSocket):
+#     await websocket.accept()
+#     sessionid = 0  # Default session ID
+#     try:
+#         while True:
+#             data = await websocket.receive_text()
+#             message = json.loads(data)
+#             if message["type"] == "session":
+#                 sessionid = message.get("sessionid", 0)
+#             elif message["type"] == "audio":
+#                 audio_data_str = message["data"]
+#                 audio_data = audio_data_str.encode('latin-1')
+#                 nerfreals[sessionid].put_audio_frame(audio_data)
+#     except WebSocketDisconnect:
+#         print("WebSocket connection closed")
+
+import base64
+import cv2
+session_video_queues: Dict[int, asyncio.Queue] = {}  # To store video queues per sessionid
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    sessionid = None  # To store the sessionid
+    video_queue = None
     try:
         while True:
-            data = await websocket.receive_text()
-            message = json.loads(data)
-            if message["type"] == "audio":
-                sessionid = message.get("sessionid", 0)
-                audio_data = message["data"]
-                nerfreals[sessionid].put_audio_frame(audio_data)
-            elif message["type"] == "video":
-                # Handle incoming video frame
-                pass
+            message = await websocket.receive_text()
+            data = json.loads(message)
+            msg_type = data.get("type")
+            if msg_type == "session":
+                sessionid = data.get("sessionid")
+                if sessionid is not None:
+                    if sessionid not in nerfreals:
+                        # Initialize a new MuseReal instance for this session
+                        nerfreal = MuseReal(app.state.opt)
+                        nerfreals[sessionid] = nerfreal
+                        print(f"Session {sessionid} connected.")
+                        # Start rendering for the new session
+                        nerfreals[sessionid].start_rendering()
+                        # Optionally, send confirmation back to the client
+                        await websocket.send_json({"type": "session_ack", "sessionid": sessionid})
+                    else:
+                        print(f"Session {sessionid} already exists.")
+                        await websocket.send_json({"type": "session_ack", "sessionid": sessionid})
+                else:
+                    await websocket.send_json({"type": "error", "message": "No sessionid provided."})
+                    
+            elif msg_type == "audio":
+                if sessionid is None:
+                    await websocket.send_json({"type": "error", "message": "Sessionid not set."})
+                    continue
+                audio_data_str = data.get("data")
+                if audio_data_str:
+                    try:
+                        # Decode audio data from base64
+                        audio_data = base64.b64decode(audio_data_str)
+                    except Exception as e:
+                        await websocket.send_json({"type": "error", "message": "Invalid audio data encoding."})
+                        continue
+                    # Pass audio data to MuseReal instance
+                    nerfreals[sessionid].put_audio_frame(audio_data)
+                    # Retrieve video frame from MuseReal
+                    video_frame = await nerfreals[sessionid].get_video_frame()
+                    if video_frame is not None:
+                        # Encode the video frame as JPEG
+                        _, img_encoded = cv2.imencode('.jpg', video_frame)
+                        img_bytes = img_encoded.tobytes()
+                        # Encode to base64 for JSON transmission
+                        img_base64 = base64.b64encode(img_bytes).decode('utf-8')
+                        # Send the video frame back to the client
+                        await websocket.send_json({
+                            'type': 'video',
+                            'data': img_base64
+                        })
+            elif msg_type == "end":
+                if sessionid is not None:
+                    logger.info(f"Session {sessionid} ended.")
+                    # Clean up session
+                    if sessionid in nerfreals:
+                        del nerfreals[sessionid]
+            else:
+                await websocket.send_json({"type": "error", "message": f"Unknown message type: {msg_type}"})
     except WebSocketDisconnect:
-        print("WebSocket connection closed")
+        if sessionid is not None:
+            logger.info(f"Session {sessionid} disconnected.")
+            if sessionid in nerfreals:
+                del nerfreals[sessionid]
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        await websocket.close()
 
-class OfferModel(BaseModel):
-    sdp: str
-    type: str
-    
-class RelayTrack(MediaStreamTrack):
-    def __init__(self, track):
-        super().__init__()
-        self.track = track
-        self.relay = MediaRelay()
-
-    async def recv(self):
-        frame = await self.track.recv()
-        return self.relay.relay(frame)
-
-# @app.post("/offer")
-# async def offer(params: OfferModel):
-#     global nerfreals, statreals
-
-#     offer = RTCSessionDescription(sdp=params.sdp, type=params.type)
-
-#     sessionid = len(nerfreals)
-#     for index, value in enumerate(statreals):
-#         if value == 0:
-#             sessionid = index
-#             break
-#     if sessionid >= len(nerfreals):
-#         print(statreals, nerfreals)
-#         print('Reached max session limit')
-#         return JSONResponse(content={"error": "Max sessions reached"}, status_code=400)
-#     statreals[sessionid] = 1
-
-#     pc = RTCPeerConnection()
-#     pcs.add(pc)
-
-#     # Log offer SDP for debugging
-#     print(f"Received Offer SDP:\n{offer.sdp}")
-
-#     @pc.on("connectionstatechange")
-#     async def on_connectionstatechange():
-#         print(f"Connection state is {pc.connectionState}")
-#         if pc.connectionState in ["failed", "closed"]:
-#             await pc.close()
-#             pcs.pop(str(sessionid), None)
-#             statreals[sessionid] = 0
-
-#     # Add handlers for incoming media (audio and video)
-#     @pc.on("track")
-#     def on_track(track):
-#         if track.kind == "audio":
-#             print("Received audio track")
-#             @track.on("ended")
-#             async def on_ended():
-#                 print("Audio track ended")
-#         elif track.kind == "video":
-#             print("Received video track")
-#             pc.addTrack(RelayTrack(track))  # Ensure proper relaying of track
-
-#     # Create a video stream from MuseReal and add video transceiver
-#     player = HumanPlayer(nerfreals[sessionid])
-
-#     # Explicitly add transceivers
-#     audio_transceiver = pc.addTransceiver("audio", direction="sendrecv")
-#     video_transceiver = pc.addTransceiver("video", direction="sendrecv")
-    
-#     # Add the video track to the video transceiver
-#     video_transceiver.sender.replaceTrack(player.video)
-
-#     # Ensure all transceivers have correct directions
-#     for transceiver in pc.getTransceivers():
-#         print(f"Transceiver {transceiver.kind} direction: {transceiver.direction}")
-#         transceiver.direction = "sendrecv"  # Explicitly set the direction to "sendrecv"
-
-#     # Set the remote description with the offer from the client
-#     await pc.setRemoteDescription(offer)
-
-#     # Create an answer and set it as the local description
-#     answer = await pc.createAnswer()
-#     await pc.setLocalDescription(answer)
-
-#     # Log answer SDP for debugging
-#     print(f"Generated Answer SDP:\n{pc.localDescription.sdp}")
-
-#     return JSONResponse(content={
-#         "sdp": pc.localDescription.sdp,
-#         "type": pc.localDescription.type,
-#         "sessionid": sessionid
-#     })
+async def send_video_frames(websocket: WebSocket, sessionid: int, video_queue: asyncio.Queue):
+    """
+    Sends video frames from the video_queue to the client via WebSocket.
+    """
+    try:
+        while True:
+            img_bytes = await video_queue.get()
+            # Encode the image as base64
+            img_base64 = base64.b64encode(img_bytes).decode('utf-8')
+            # Send the image back to the client
+            await websocket.send_json({
+                'type': 'video',
+                'data': img_base64
+            })
+    except Exception as e:
+        logger.error(f"Error sending video frames: {e}")
 
 @app.post("/offer")
-async def offer(request: Request):
-    global nerfreals, statreals, pcs
+async def offer_endpoint(request: Request):
+    global nerfreals, pcs
     
     params = await request.json()
     offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
 
-    sessionid = len(nerfreals)
-    for index, value in enumerate(statreals):
-        if value == 0:
-            sessionid = index
-            break
-
-    if sessionid >= len(nerfreals):
-        return JSONResponse(status_code=400, content={"message": "Max sessions reached"})
+    # Generate a unique sessionid
+    sessionid = str(uuid.uuid4())
     
-    statreals[sessionid] = 1
+    # Create a new MuseReal instance
+    nerfreal = MuseReal(app.state.opt)
+    nerfreals[sessionid] = nerfreal
 
+    # Create a new RTCPeerConnection
     pc = RTCPeerConnection()
     pcs.add(pc)
 
     @pc.on("connectionstatechange")
     async def on_connectionstatechange():
-        print(f"Connection state is {pc.connectionState}")
+        logger.info(f"Connection state is {pc.connectionState}")
         if pc.connectionState in ["failed", "closed"]:
             await pc.close()
             pcs.discard(pc)
-            statreals[sessionid] = 0
+            if sessionid in nerfreals:
+                del nerfreals[sessionid]
+    
+    # Add transceivers
+    pc.addTransceiver('video', direction='sendonly')
+    pc.addTransceiver('audio', direction='sendonly')
 
+    # Add tracks
     player = HumanPlayer(nerfreals[sessionid])
-    audio_sender = pc.addTrack(player.audio)
-    video_sender = pc.addTrack(player.video)
+    pc.addTrack(player.video)
+    pc.addTrack(player.audio)
 
-    capabilities = RTCRtpSender.getCapabilities("video")
-    preferences = list(filter(lambda x: x.name in ["H264", "VP8", "rtx"], capabilities.codecs))
-    transceiver = pc.getTransceivers()[1]
-    transceiver.setCodecPreferences(preferences)
+    # Set codec preferences for video
+    for transceiver in pc.getTransceivers():
+        if transceiver.kind == 'video':
+            capabilities = RTCRtpSender.getCapabilities('video')
+            preferences = [codec for codec in capabilities.codecs if codec.name in ('H264', 'VP8')]
+            transceiver.setCodecPreferences(preferences)
+            transceiver.direction = 'sendonly'
+        elif transceiver.kind == 'audio':
+            transceiver.direction = 'sendonly'
 
     await pc.setRemoteDescription(offer)
     answer = await pc.createAnswer()
@@ -382,12 +412,65 @@ async def offer(request: Request):
 
     return JSONResponse(content={"sdp": pc.localDescription.sdp, "type": pc.localDescription.type, "sessionid": sessionid})
 
+# @app.post("/offer")
+# async def offer(request: Request):
+#     global nerfreals, statreals, pcs
+    
+#     params = await request.json()
+#     offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
+
+#     sessionid = len(nerfreals)
+#     for index, value in enumerate(statreals):
+#         if value == 0:
+#             sessionid = index
+#             break
+
+#     if sessionid >= len(nerfreals):
+#         return JSONResponse(status_code=400, content={"message": "Max sessions reached"})
+    
+#     statreals[sessionid] = 1
+
+#     pc = RTCPeerConnection()
+#     pcs.add(pc)
+
+#     @pc.on("connectionstatechange")
+#     async def on_connectionstatechange():
+#         print(f"Connection state is {pc.connectionState}")
+#         if pc.connectionState in ["failed", "closed"]:
+#             await pc.close()
+#             pcs.discard(pc)
+#             statreals[sessionid] = 0
+
+#     # Add transceivers
+#     pc.addTransceiver('video', direction='sendonly')
+#     pc.addTransceiver('audio', direction='sendonly')
+
+#     # Add tracks
+#     player = HumanPlayer(nerfreals[sessionid])
+#     pc.addTrack(player.video)
+#     pc.addTrack(player.audio)
+
+#     # Set codec preferences for video
+#     for transceiver in pc.getTransceivers():
+#         if transceiver.kind == 'video':
+#             capabilities = RTCRtpSender.getCapabilities('video')
+#             preferences = [codec for codec in capabilities.codecs if codec.name in ('H264', 'VP8')]
+#             transceiver.setCodecPreferences(preferences)
+#             transceiver.direction = 'sendonly'
+#         elif transceiver.kind == 'audio':
+#             transceiver.direction = 'sendonly'
+
+#     await pc.setRemoteDescription(offer)
+#     answer = await pc.createAnswer()
+#     await pc.setLocalDescription(answer)
+
+#     return JSONResponse(content={"sdp": pc.localDescription.sdp, "type": pc.localDescription.type, "sessionid": sessionid})
+
 
 @app.post("/humanaudio")
 async def humanaudio(
     file: UploadFile = File(...), 
     sessionid: int = Form(0),
-    # nerfreals: List[MuseReal] = Depends(get_nerfreals)
 ):
     global nerfreals
     try:
